@@ -1,0 +1,6 @@
+{
+  "name": "t-herc-claude-mods",
+  "description": "Unofficial mods for Claude Code by t-herc",
+  "owner": { "name": "toma" },
+  "plugins": [{ "name": "dialogue-box", "source": "./dialogue-box" }]
+}

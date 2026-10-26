@@ -1,0 +1,8 @@
+{
+  "name": "dialogue-box",
+  "version": "0.3.0",
+  "description": "macOS only. /dialogue on: Claude ends each reply with short spoken paragraphs, read aloud by your Mac's voices in a dialogue box you can rewind, pause, skip and speed up. Any language, with words in other languages pronounced by their own voice.",
+  "author": { "name": "toma" },
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}
