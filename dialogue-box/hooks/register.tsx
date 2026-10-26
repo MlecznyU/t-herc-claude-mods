@@ -11,6 +11,7 @@ import {
   extractSpoken,
   RATES,
   SPOKEN_INSTRUCTION,
+  SPOKEN_OFF_INSTRUCTION,
   splitSegments,
   wordsPerMinute,
 } from './speech'
@@ -246,12 +247,13 @@ export const register: Register = on => {
         $.ui.status(STATUS)
         return {
           text: `Dialogue on: replies end with spoken paragraphs you can rewind, pause and skip. ${await voicesSummary($)}`,
+          context: [SPOKEN_INSTRUCTION],
         }
       case 'off':
         await update($, isOn, () => false)
         await show($, null)
         $.ui.status(undefined)
-        return { text: 'Dialogue off.' }
+        return { text: 'Dialogue off.', context: [SPOKEN_OFF_INSTRUCTION] }
       case 'stop':
         await show($, null)
         return { text: 'Playback stopped.' }

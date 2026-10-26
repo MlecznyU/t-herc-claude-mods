@@ -25,16 +25,26 @@ How to speak:
 
 The written reply above the block stays as complete as it would be without voice mode.`
 
-const SPOKEN_BLOCK = /<spoken(?:\s+lang="([^"]*)")?\s*>([\s\S]*?)<\/spoken>/g
+export const SPOKEN_OFF_INSTRUCTION = 'Voice mode is off: stop ending replies with a <spoken> block.'
+
+const SPOKEN_OPENING = /<spoken(?:\s+lang="([^"]*)")?\s*>/g
+const SPOKEN_CLOSING = '</spoken>'
 const LANGUAGE_INSERT = /<lang\s+code="([^"]*)"\s*>([\s\S]*?)<\/lang>/g
 
 export type Spoken = { language: string | undefined; paragraphs: string[] }
 
+// Only a block that ends the answer counts, opened by the nearest tag before its end: a reply that mentions the tags
+// in its written part must not be read aloud from the mention.
 export function extractSpoken(answer: string): Spoken | undefined {
-  const block = [...answer.matchAll(SPOKEN_BLOCK)].at(-1)
-  if (block === undefined) return undefined
+  const trimmed = answer.trimEnd()
+  if (!trimmed.endsWith(SPOKEN_CLOSING)) return undefined
 
-  const [, code, text = ''] = block
+  const end = trimmed.length - SPOKEN_CLOSING.length
+  const opening = [...trimmed.slice(0, end).matchAll(SPOKEN_OPENING)].at(-1)
+  if (opening === undefined) return undefined
+
+  const code = opening[1]
+  const text = trimmed.slice(opening.index + opening[0].length, end)
   const paragraphs = text
     .split(/\n\s*\n/)
     .map(paragraph =>
@@ -44,7 +54,7 @@ export function extractSpoken(answer: string): Spoken | undefined {
         .replace(/\s+/g, ' ')
         .trim(),
     )
-    .filter(paragraph => displayText(paragraph) !== '')
+    .filter(paragraph => /\p{L}/u.test(displayText(paragraph)))
   const language = code === undefined || normalizeLanguage(code) === '' ? undefined : normalizeLanguage(code)
 
   return { language, paragraphs }
