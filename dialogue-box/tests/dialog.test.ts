@@ -2,10 +2,10 @@ import { expect, test } from 'claude-code/testing'
 
 import { nextParagraph, pause, previousParagraph, startDialog, togglePause } from '../hooks/dialog'
 
-const dialog = startDialog(['one', 'two', 'three'], 'pl')
+const dialog = startDialog('turn-1', ['one', 'two', 'three'], 'pl')
 
 test('starts playing the first paragraph', async () => {
-  expect(dialog).toEqual({ paragraphs: ['one', 'two', 'three'], index: 0, language: 'pl', status: 'playing' })
+  expect(dialog).toEqual({ id: 'turn-1', paragraphs: ['one', 'two', 'three'], index: 0, language: 'pl', status: 'playing' })
 })
 
 test('next moves on and ends on the last paragraph, keeping it shown', async () => {

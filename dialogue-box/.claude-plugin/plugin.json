@@ -1,7 +1,7 @@
 {
   "name": "dialogue-box",
-  "version": "0.3.1",
-  "description": "macOS only. /dialogue on: Claude ends each reply with short spoken paragraphs, read aloud by your Mac's voices in a dialogue box you can rewind, pause, skip and speed up. Any language, with words in other languages pronounced by their own voice.",
+  "version": "0.4.0",
+  "description": "macOS only. /dialogue on: talk with Claude by voice. Speech leads and the written reply becomes a board it points at (or a full reply it sums up). Natural Microsoft Edge neural voices via edge-tts, with your Mac's voices as offline backup, in a dialogue box you can rewind, pause, skip and speed up.",
   "author": { "name": "toma" },
   "license": "MIT",
   "types": "./types/index.d.ts"
