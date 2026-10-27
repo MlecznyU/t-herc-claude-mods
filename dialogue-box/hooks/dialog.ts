@@ -1,7 +1,7 @@
 import type { Dialog } from '../types'
 
-export function startDialog(paragraphs: string[], language: string): Dialog {
-  return { paragraphs, index: 0, language, status: 'playing' }
+export function startDialog(id: string, paragraphs: string[], language: string): Dialog {
+  return { id, paragraphs, index: 0, language, status: 'playing' }
 }
 
 export function previousParagraph(dialog: Dialog): Dialog {

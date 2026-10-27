@@ -1,6 +1,20 @@
 import { expect, test } from 'claude-code/testing'
 
-import { displayText, extractSpoken, splitSegments } from '../hooks/speech'
+import { displayText, extractSpoken, spokenInstruction, splitSegments } from '../hooks/speech'
+
+test('the integrated style drops the rules that keep the written reply complete', async () => {
+  const integrated = spokenInstruction('integrated')
+  const mirror = spokenInstruction('mirror')
+
+  expect(integrated).toContain('shared board')
+  expect(integrated.includes('only as an extra at the end')).toBe(false)
+  expect(integrated.includes('stays as complete')).toBe(false)
+  expect(mirror).toContain('stays as complete')
+  for (const text of [integrated, mirror]) {
+    expect(text).toContain('replace any earlier voice-mode instructions')
+    expect(text).toContain('<lang code="yy">')
+  }
+})
 
 test('takes the closing spoken block, its language and plain paragraphs', async () => {
   const answer =
