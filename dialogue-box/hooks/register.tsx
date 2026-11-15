@@ -33,6 +33,7 @@ import {
   STYLES,
   wordsPerMinute,
 } from './speech'
+import { FIND_VOXLEKTOR, parseVoxlektorExecutable, VOXLEKTOR_INSTALL_HINT, voxlektorSpeakArgv, voxlektorStopArgv } from './voxlektor'
 import {
   languageName,
   languagesWithVoices,
@@ -45,7 +46,7 @@ import {
   voicesFor,
 } from './voices'
 
-const ENGINES: readonly Engine[] = ['edge', 'mac']
+const ENGINES: readonly Engine[] = ['edge', 'mac', 'voxlektor']
 
 const isOn = atom({ plugin: 'dialogue-box', key: 'isOn' } as const, false)
 const dialog = atom({ plugin: 'dialogue-box', key: 'dialog' } as const, null)
@@ -74,7 +75,7 @@ const STORE_KEYS = {
   engine: 'engine',
 }
 const STATUS = '🔊 dialogue'
-const USAGE = 'Usage: /dialogue on | off | stop | previous | setup | style integrated|mirror | engine edge|mac'
+const USAGE = 'Usage: /dialogue on | off | stop | previous | setup | style integrated|mirror | engine edge|mac|voxlektor'
 const NOT_AVAILABLE = 'dialogue-box needs macOS: it speaks through the system `say` command, which is not available here.'
 const SETUP_PANE = 'dialogue-box-setup'
 const VOICES_SHOWN_PER_LANGUAGE = 6
@@ -89,6 +90,7 @@ const STYLE_LABELS: Record<Style, string> = {
 const ENGINE_LABELS: Record<Engine, string> = {
   edge: 'Edge neural voices · online, a Mac voice reads when Edge is unreachable',
   mac: 'Mac voices only · offline',
+  voxlektor: 'voxlektor · local neural voice (Apple Silicon), a Mac voice reads when it fails',
 }
 
 let installedVoices: Voice[] = []
@@ -97,6 +99,11 @@ let edgeExecutable: string[] | undefined
 // Set by the first failed Edge render, so the rest of the reply goes straight to the Mac voice instead of waiting on
 // the network for every paragraph; the next reply tries Edge again.
 let edgeDown = false
+let voxlektorExecutable: string | undefined
+// Like edgeDown: set by the first failed voxlektor reading, so the rest of the reply goes to the Mac voice.
+let voxlektorDown = false
+// Whether what plays now is a voxlektor reading, which runs in its daemon and must be stopped there.
+let isVoxlektorPlaying = false
 let playback: HookStream<ProcessSpawnChunk, ProcessSpawnResult> | undefined
 let sample: HookStream<ProcessSpawnChunk, ProcessSpawnResult> | undefined
 let sampleGeneration = 0
@@ -126,6 +133,18 @@ async function loadVoices($: EngineInterface) {
 async function findEdge($: EngineInterface) {
   const found = await $.process.run(FIND_EDGE).catch(() => undefined)
   edgeExecutable = found?.exitCode === 0 ? parseEdgeExecutable(found.stdout) : undefined
+}
+
+async function findVoxlektor($: EngineInterface) {
+  const found = await $.process.run(FIND_VOXLEKTOR).catch(() => undefined)
+  voxlektorExecutable = found?.exitCode === 0 ? parseVoxlektorExecutable(found.stdout) : undefined
+}
+
+async function usableVoxlektor($: EngineInterface) {
+  if (voxlektorDown || (await engineOf($)) !== 'voxlektor') return undefined
+  if (voxlektorExecutable === undefined) await announceFallback($, `Mac voice: voxlektor is not installed. ${VOXLEKTOR_INSTALL_HINT}`)
+
+  return voxlektorExecutable
 }
 
 async function loadEdgeVoices($: EngineInterface) {
@@ -191,11 +210,16 @@ async function usableEdgeVoice($: EngineInterface, language: string) {
   return undefined
 }
 
-async function silence() {
+async function silence($: EngineInterface) {
   generation += 1
   const current = playback
+  const wasVoxlektor = isVoxlektorPlaying
   playback = undefined
+  isVoxlektorPlaying = false
   await current?.return({ code: null, signal: 'SIGTERM' })
+  if (current !== undefined && wasVoxlektor && voxlektorExecutable !== undefined) {
+    await $.process.run(voxlektorStopArgv(voxlektorExecutable)).catch(() => undefined)
+  }
 }
 
 async function discardRenders($: EngineInterface) {
@@ -284,6 +308,7 @@ async function renderParagraph($: EngineInterface, current: Dialog, index: numbe
 
 async function startFresh($: EngineInterface) {
   edgeDown = false
+  voxlektorDown = false
   await update($, fallback, () => null)
 }
 
@@ -293,7 +318,7 @@ function present($: EngineInterface, transition: (screen: Screen) => Screen): Pr
   const run = presenting.then(async () => {
     const before = await read($, dialog)
     const after = transition({ current: before, queue: await read($, queue), history: await read($, history) })
-    await silence()
+    await silence($)
     await update($, queue, () => after.queue)
     await update($, history, () => after.history)
     await update($, dialog, () => after.current)
@@ -324,9 +349,51 @@ async function closeAll($: EngineInterface) {
   await present($, onDismissAll)
 }
 
+// Plays one paragraph through the voxlektor daemon; a failed reading hands the paragraph to the Mac voice.
+async function speakVoxlektor($: EngineInterface, current: Dialog, vxl: string, rateStep: number) {
+  const mine = generation
+  const text = displayText(current.paragraphs[current.index] ?? '')
+  const stream = $.process.spawn({ argv: voxlektorSpeakArgv(vxl, current.language, RATES[rateStep] ?? 1), input: text })
+  playback = stream
+  isVoxlektorPlaying = true
+
+  void (async () => {
+    let result: ProcessSpawnResult
+    try {
+      for (;;) {
+        const step = await stream.next()
+        if (step.done === true) {
+          result = step.value
+          break
+        }
+      }
+    } catch (error) {
+      $.ui.log(`dialogue-box: voxlektor playback failed: ${String(error)}`, { to: 'debug' })
+      return
+    }
+    if (mine !== generation) return
+
+    playback = undefined
+    isVoxlektorPlaying = false
+    if (result.code === 0) {
+      await apply($, nextParagraph)
+      return
+    }
+
+    voxlektorDown = true
+    await announceFallback($, `Mac voice: voxlektor did not read (exit ${String(result.code)}), so a Mac voice reads the rest of this reply.`)
+    await present($, screen => screen)
+  })()
+}
+
 async function speakCurrent($: EngineInterface, current: Dialog) {
   const mine = generation
   const rateStep = await read($, rateIndex)
+  const vxl = await usableVoxlektor($)
+  if (vxl !== undefined) {
+    await speakVoxlektor($, current, vxl, rateStep)
+    return
+  }
   const rendering = renderParagraph($, current, current.index, rateStep)
   void renderParagraph($, current, current.index + 1, rateStep)
   const parts = await voicedParts($, current, current.index)
@@ -373,10 +440,13 @@ async function settingsSummary($: EngineInterface) {
     languages.map(async language => `${languageName(language)} → ${(await voiceOf($, language)) ?? 'system voice'}`),
   )
   const edgeVoice = await edgeVoiceOf($, primary)
+  const chosen = await engineOf($)
   const engine =
-    (await engineOf($)) === 'edge' && edgeExecutable !== undefined && edgeVoice !== undefined
-      ? `Edge voice ${edgeVoice}, Mac voices as backup: ${macVoices.join(', ')}`
-      : `Mac voices: ${macVoices.join(', ')}`
+    chosen === 'voxlektor' && voxlektorExecutable !== undefined
+      ? `voxlektor voice (set with vxl setup), Mac voices as backup: ${macVoices.join(', ')}`
+      : chosen === 'edge' && edgeExecutable !== undefined && edgeVoice !== undefined
+        ? `Edge voice ${edgeVoice}, Mac voices as backup: ${macVoices.join(', ')}`
+        : `Mac voices: ${macVoices.join(', ')}`
 
   return `Style: ${await styleOf($)}. ${engine}. Run /dialogue setup to change them.`
 }
@@ -436,7 +506,7 @@ async function restoreSettings($: EngineInterface) {
 
 async function openSetup($: EngineInterface) {
   await update($, setupView, () => 'voices')
-  await findEdge($)
+  await Promise.all([findEdge($), findVoxlektor($)])
   void loadEdgeVoices($).catch(() => undefined)
   return $.ui.open({ id: SETUP_PANE, title: 'Voice setup', focus: true, closeOnEscape: true, holdToasts: true })
 }
@@ -512,6 +582,7 @@ async function chooseStyle($: EngineInterface, style: Style) {
 
 async function chooseEngine($: EngineInterface, engine: Engine) {
   edgeDown = false
+  voxlektorDown = false
   await update($, fallback, () => null)
   await update($, defaultEngine, () => engine)
   await update($, engineOverride, () => null)
@@ -526,7 +597,7 @@ async function showLanguages($: EngineInterface) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'dialogue', description: 'Hear replies as spoken dialogue: on | off | stop | previous | setup | style | engine' })
-    await Promise.all([loadVoices($), restoreSettings($), findEdge($)])
+    await Promise.all([loadVoices($), restoreSettings($), findEdge($), findVoxlektor($)])
     // Also warms uvx, whose first run downloads edge-tts.
     if ((await engineOf($)) === 'edge') void loadEdgeVoices($).catch(() => undefined)
     $.ui.status((await read($, isOn)) ? STATUS : undefined)
@@ -576,7 +647,12 @@ export const register: Register = on => {
           if (edgeExecutable === undefined) return { text: EDGE_INSTALL_HINT }
           void loadEdgeVoices($).catch(() => undefined)
         }
+        if (value === 'voxlektor') {
+          await findVoxlektor($)
+          if (voxlektorExecutable === undefined) return { text: VOXLEKTOR_INSTALL_HINT }
+        }
         edgeDown = false
+        voxlektorDown = false
         await update($, fallback, () => null)
         await update($, engineOverride, () => value)
         return { text: `Engine for this session: ${ENGINE_LABELS[value]}.` }
@@ -740,6 +816,7 @@ export const register: Register = on => {
             </Box>
           ))}
           {sessionEngine !== null && <Text dimColor>This session: {sessionEngine} (/dialogue engine)</Text>}
+          {voxlektorExecutable === undefined && <Text dimColor>{VOXLEKTOR_INSTALL_HINT}</Text>}
         </Box>
         <Box flexDirection="column">
           <Text bold>Edge voice · {languageName(primary)}</Text>
