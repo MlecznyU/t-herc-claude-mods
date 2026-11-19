@@ -1,3 +1,7 @@
 .DS_Store
+# IDE project files.
+.idea/
+# Local working docs (specs, plans, handoffs, agent reports); never part of the repository.
+.superpowers/
 # Laid by Claude Code when it loads a plugin from this folder.
 .claude-plugin/types/
