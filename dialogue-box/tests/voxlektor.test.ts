@@ -3,20 +3,37 @@ import { expect, test } from 'claude-code/testing'
 import {
   checkArgv,
   controlArgv,
+  daemonNavigatesTags,
   decodeTag,
   encodeTag,
   groupOf,
   hasRequiredFeatures,
+  isCompatible,
   LineBuffer,
   ownerFor,
   parseCheck,
   parseEvent,
   parseFound,
   parseProgress,
+  reportsProgress,
   sayCommand,
   setupArgv,
+  parseStatus,
+  speaksProtocol,
+  statusArgv,
+  stuckMessage,
+  stuckOfError,
+  stuckOfStatus,
   supportsProfiles,
+  supportsTagNav,
+  TAG_NAV_FEATURE,
+  TAG_NAV_MIN_VERSION,
   tuneCommand,
+  versionStanding,
+  VOXLEKTOR_INSTALL_COMMAND,
+  VOXLEKTOR_UPDATE_COMMAND,
+  voxlektorInstallArgv,
+  voxlektorUpdateArgv,
   voxRate,
   warmArgv,
   watchArgv,
@@ -27,7 +44,7 @@ const CHECK = JSON.stringify({
   setup_completed: true,
   profile_exists: true,
   features: ['owners', 'profiles', 'tags', 'warm', 'watch'],
-  version: '0.5.0',
+  version: '0.2.0',
   engine: 'omnivoice',
   model: {
     present: true,
@@ -81,14 +98,69 @@ test('the claude profile is named only when voxlektor has profiles', async () =>
   expect(tuneCommand(false)).toBe('vxl setup')
 })
 
-test('warming is daemon-wide and names no profile', async () => {
-  expect(warmArgv('vxl')).toEqual(['vxl', 'warm'])
+test('warming loads the claude profile when voxlektor has profiles', async () => {
+  expect(warmArgv('vxl', true)).toEqual(['vxl', 'warm', '--profile=claude'])
+  expect(warmArgv('vxl', false)).toEqual(['vxl', 'warm'])
+})
+
+test('the daemon status is asked as JSON', async () => {
+  expect(statusArgv('vxl')).toEqual(['vxl', 'status', '--json'])
+})
+
+test('a status that holds the lock without answering names its pid; anything else is not stuck', async () => {
+  expect(parseStatus('{"running": true, "answering": false, "pid": 10368, "protocol": 1}')).toEqual({ running: true, answering: false, pid: 10368 })
+  expect(parseStatus('{"running": true, "answering": false, "pid": null}')).toEqual({ running: true, answering: false, pid: null })
+  expect(parseStatus('{"running": true, "state": "WARM", "protocol": 1}')).toEqual({ running: true, answering: true, pid: null })
+  expect(parseStatus('{"running": false, "protocol": 1}')).toEqual({ running: false, answering: true, pid: null })
+  expect(parseStatus('OFF')).toBe(undefined)
+  expect(stuckOfStatus(parseStatus('{"running": true, "answering": false, "pid": 7}'))).toEqual({ pid: 7 })
+  expect(stuckOfStatus(parseStatus('{"running": true, "state": "WARM"}'))).toBe(undefined)
+  expect(stuckOfStatus(undefined)).toBe(undefined)
+})
+
+test('a vxl error about a daemon that does not answer is told apart, with or without its pid', async () => {
+  const named = 'a voxlektor daemon (pid 10368) holds the lock but does not answer; stop it with: vxl stop\n'
+
+  expect(stuckOfError(named)).toEqual({ pid: 10368 })
+  expect(stuckOfError('a voxlektor daemon holds the lock but does not answer; stop it with: vxl stop')).toEqual({ pid: null })
+  expect(stuckOfError('voxlektor is not set up yet; run: vxl setup')).toBe(undefined)
+  expect(stuckMessage({ pid: 10368 })).toBe('voxlektor is not answering (pid 10368): run vxl stop')
+  expect(stuckMessage({ pid: null })).toBe('voxlektor is not answering: run vxl stop')
 })
 
 test('controls are scoped to the owner and mapped to their subcommands', async () => {
   expect(controlArgv('vxl', 'stop', 'o1')).toEqual(['vxl', 'stop-reading', '--owner=o1'])
   expect(controlArgv('vxl', 'pause', 'o1')).toEqual(['vxl', 'pause', '--owner=o1'])
   expect(controlArgv('vxl', 'resume', 'o1')).toEqual(['vxl', 'resume', '--owner=o1'])
+})
+
+test('skip and back move by a whole tag (one paragraph), scoped to the owner', async () => {
+  expect(controlArgv('vxl', 'skip', 'o1')).toEqual(['vxl', 'skip', '--owner=o1', '--unit=tag'])
+  expect(controlArgv('vxl', 'back', 'o1')).toEqual(['vxl', 'back', '--owner=o1', '--unit=tag'])
+})
+
+test('tag navigation needs the tag_nav feature of the check and a daemon of 0.4.0 or newer', async () => {
+  const check = (features: string[]) => parseCheck(JSON.stringify({ features }))!
+
+  expect(TAG_NAV_FEATURE).toBe('tag_nav')
+  expect(TAG_NAV_MIN_VERSION).toBe('0.4.0')
+  expect(supportsTagNav(check(['owners', 'tag_nav', 'tags']))).toBe(true)
+  expect(supportsTagNav(check(['owners', 'tags']))).toBe(false)
+  expect(supportsTagNav(parseCheck('{}')!)).toBe(false)
+  // A daemon before 0.4.0 ignores the unit and moves by a chunk, so its version is asked too.
+  expect(daemonNavigatesTags('0.4.0')).toBe(true)
+  expect(daemonNavigatesTags('0.4.1')).toBe(true)
+  expect(daemonNavigatesTags('0.10.0')).toBe(true)
+  expect(daemonNavigatesTags('0.3.9')).toBe(false)
+  // A pre-release of 0.4.0 may predate tag navigation; one of a later version, a post-release or a local build do not.
+  expect(daemonNavigatesTags('0.4.0rc1')).toBe(false)
+  expect(daemonNavigatesTags('0.4.0.dev3')).toBe(false)
+  expect(daemonNavigatesTags('0.4.0b2')).toBe(false)
+  expect(daemonNavigatesTags('0.4.1rc1')).toBe(true)
+  expect(daemonNavigatesTags('0.4.0.post1')).toBe(true)
+  expect(daemonNavigatesTags('0.4.0+local')).toBe(true)
+  expect(daemonNavigatesTags(undefined)).toBe(false)
+  expect(daemonNavigatesTags('not a version')).toBe(false)
 })
 
 test('the watcher follows this owner as JSON', async () => {
@@ -113,6 +185,8 @@ test('check output is read with its license, features and settings', async () =>
     ready: true,
     setupCompleted: true,
     profileExists: true,
+    version: '0.2.0',
+    protocol: undefined,
     features: ['owners', 'profiles', 'tags', 'warm', 'watch'],
     model: {
       present: true,
@@ -121,8 +195,10 @@ test('check output is read with its license, features and settings', async () =>
       commercialUse: false,
       sizeBytes: 3_000_000_000,
     },
-    settings: { voice: 'ania', rate: 1.1, volume: 0.8 },
+    settings: { voice: 'ania', rate: 1.1, volume: 0.8, steps: undefined },
   })
+  expect(parseCheck(JSON.stringify({ settings: { voice: 'v', rate: 1, volume: 50, steps: 8 } }))?.settings?.steps).toBe(8)
+  expect(parseCheck(JSON.stringify({ settings: { voice: 'v', rate: 1, volume: 50, steps: 'many' } }))?.settings?.steps).toBe(undefined)
   expect(hasRequiredFeatures(check!)).toBe(true)
   expect(supportsProfiles(check!)).toBe(true)
   expect(parseCheck('not json')).toBe(undefined)
@@ -143,6 +219,63 @@ test('a check without features reads as too old', async () => {
   expect(old.model).toBe(null)
   expect(hasRequiredFeatures(old)).toBe(false)
   expect(supportsProfiles(old)).toBe(false)
+})
+
+test('only a voxlektor of the compatible range with the required features is compatible', async () => {
+  const at = (version: string | undefined) =>
+    parseCheck(JSON.stringify({ ready: true, setup_completed: true, version, features: ['owners', 'tags', 'warm', 'watch'] }))!
+
+  expect(at('0.1.0').version).toBe('0.1.0')
+  expect(isCompatible(at('0.1.0'))).toBe(false)
+  expect(isCompatible(at('0.2.0'))).toBe(true)
+  expect(isCompatible(at('0.2.7'))).toBe(true)
+  expect(isCompatible(at('0.3.0'))).toBe(true)
+  expect(isCompatible(at('0.9.5'))).toBe(true)
+  expect(isCompatible(at('1.0.0'))).toBe(false)
+  expect(isCompatible(at('1.2.0'))).toBe(false)
+  expect(isCompatible(at(undefined))).toBe(false)
+  expect(isCompatible(at('not a version'))).toBe(false)
+  expect(isCompatible({ ...at('0.2.0'), features: undefined })).toBe(false)
+  expect(isCompatible({ ...at('0.2.0'), features: ['owners', 'tags', 'watch'] })).toBe(false)
+})
+
+test('a version below the range is older, one at or past its upper bound is newer', async () => {
+  expect(versionStanding('0.1.0')).toBe('older')
+  expect(versionStanding(undefined)).toBe('older')
+  expect(versionStanding('not a version')).toBe('older')
+  expect(versionStanding('0.2.0')).toBe('within')
+  expect(versionStanding('0.3.0')).toBe('within')
+  expect(versionStanding('0.9.5')).toBe('within')
+  expect(versionStanding('1.0.0')).toBe('newer')
+  expect(versionStanding('2.1.0rc1')).toBe('newer')
+})
+
+test('the protocol version is read where voxlektor sends one; only v1 or none is spoken', async () => {
+  expect(parseCheck(JSON.stringify({ protocol: 1 }))?.protocol).toBe(1)
+  expect(parseCheck(JSON.stringify({ protocol: 2 }))?.protocol).toBe(2)
+  expect(parseCheck('{}')?.protocol).toBe(undefined)
+  expect(parseCheck(JSON.stringify({ protocol: '1' }))?.protocol).toBe(undefined)
+  // The socket frame's `v` never reaches the CLI's JSON lines; only `protocol` names it there.
+  expect(parseCheck(JSON.stringify({ v: 2 }))?.protocol).toBe(undefined)
+  const snapshot = parseEvent(JSON.stringify({ event: 'snapshot', protocol: 2 }))
+  expect(snapshot?.type === 'snapshot' ? snapshot.protocol : 'none').toBe(2)
+  expect(speaksProtocol(undefined)).toBe(true)
+  expect(speaksProtocol(1)).toBe(true)
+  expect(speaksProtocol(2)).toBe(false)
+})
+
+test('only setup with profiles reports progress as JSON', async () => {
+  expect(reportsProgress({ profiles: true })).toBe(true)
+  expect(reportsProgress({ profiles: false })).toBe(false)
+})
+
+test('install and update reinstall the pinned voxlektor tag, never main', async () => {
+  const source = 'git+https://github.com/MlecznyU/voxlektor@v0.4.0'
+
+  expect(VOXLEKTOR_INSTALL_COMMAND).toBe(`uv tool install --reinstall ${source}`)
+  expect(VOXLEKTOR_UPDATE_COMMAND).toBe(VOXLEKTOR_INSTALL_COMMAND)
+  expect(voxlektorInstallArgv('/b/uv')).toEqual(['/b/uv', 'tool', 'install', '--reinstall', source])
+  expect(voxlektorUpdateArgv('/b/uv')).toEqual(voxlektorInstallArgv('/b/uv'))
 })
 
 test('a missing or broken rate reads as the normal rate', async () => {
@@ -209,6 +342,12 @@ test('the snapshot gives the floor, the playing tag and an outdated daemon', asy
     tag: 'r1:1:0',
     floor: { owner: 'o1', group: 'r1' },
     waiting: 2,
+    groups: [
+      { owner: 'o1', group: 'r1', position: 0, paused: false },
+      { owner: 'o2', group: 'r2', position: 1, paused: false },
+      { owner: 'o3', group: 'r3', position: null, paused: true },
+      { owner: 7, group: 'broken' },
+    ],
     daemon_outdated: true,
   })
 
@@ -216,19 +355,29 @@ test('the snapshot gives the floor, the playing tag and an outdated daemon', asy
     type: 'snapshot',
     state: 'WARM',
     version: '0.5.0',
+    protocol: undefined,
     caps: ['subscribe'],
     tag: 'r1:1:0',
     floorOwner: 'o1',
     outdated: true,
+    paused: true,
+    groups: [
+      { owner: 'o1', group: 'r1', position: 0, paused: false },
+      { owner: 'o2', group: 'r2', position: 1, paused: false },
+      { owner: 'o3', group: 'r3', position: null, paused: true },
+    ],
   })
   expect(parseEvent('{"event":"snapshot","state":"COLD","floor":null}')).toEqual({
     type: 'snapshot',
     state: 'COLD',
     version: undefined,
+    protocol: undefined,
     caps: [],
     tag: undefined,
     floorOwner: null,
     outdated: false,
+    paused: false,
+    groups: [],
   })
 })
 
