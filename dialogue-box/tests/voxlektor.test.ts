@@ -270,7 +270,7 @@ test('only setup with profiles reports progress as JSON', async () => {
 })
 
 test('install and update reinstall the pinned voxlektor tag, never main', async () => {
-  const source = 'git+https://github.com/MlecznyU/voxlektor@v0.4.0'
+  const source = 'git+https://github.com/MlecznyU/voxlektor@v0.4.1'
 
   expect(VOXLEKTOR_INSTALL_COMMAND).toBe(`uv tool install --reinstall ${source}`)
   expect(VOXLEKTOR_UPDATE_COMMAND).toBe(VOXLEKTOR_INSTALL_COMMAND)

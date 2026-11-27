@@ -1,6 +1,6 @@
 {
   "name": "dialogue-box",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "macOS only. /dialogue on: talk with Claude by voice. Speech leads and the written reply becomes a board it points at (or a full reply it sums up). A local neural voice through voxlektor on Apple Silicon (gapless, several sessions take turns), or Microsoft Edge neural voices via edge-tts, with your Mac's voices as backup, in a dialogue box you can rewind, pause, skip and speed up.",
   "author": { "name": "toma" },
   "license": "MIT",

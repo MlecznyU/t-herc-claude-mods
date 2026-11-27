@@ -99,8 +99,8 @@ button; **No, show me the command** shows the command to run in a terminal inste
 
 1. **Install uv**, the tool voxlektor installs with, when it is missing.
 2. **Install voxlektor** (or **Update voxlektor** when the installed one lacks something dialogue-box needs; the
-   section names what): the pinned release v0.4.0 through `uv tool install`. dialogue-box speaks to every voxlektor
-   from 0.2.0 up to, not including, 1.0.0. A voxlektor past v0.4.0 is never reinstalled, as that would be a
+   section names what): the pinned release v0.4.1 through `uv tool install`. dialogue-box speaks to every voxlektor
+   from 0.2.0 up to, not including, 1.0.0. A voxlektor past v0.4.1 is never reinstalled, as that would be a
    downgrade: one at or past 1.0.0 means dialogue-box needs an update, and one in between that lacks something is
    yours to repair (`vxl setup --check` shows what it reports). Edge or a Mac voice reads until then.
 3. **Accept & download**: the voice model, about 1.7 GB, under the license the section shows (non-commercial use only).

@@ -29,7 +29,7 @@ const TAG_UNIT = 'tag'
 // may break it. Installing and updating both pin VOXLEKTOR_TAG, never main, so an install always lands inside the
 // range. A voxlektor past the range is never reinstalled: that would be a downgrade, and dialogue-box is what needs
 // the update.
-export const VOXLEKTOR_TAG_VERSION = '0.4.0'
+export const VOXLEKTOR_TAG_VERSION = '0.4.1'
 export const VOXLEKTOR_TAG = `v${VOXLEKTOR_TAG_VERSION}`
 export const VOXLEKTOR_MIN_VERSION = '0.2.0'
 export const VOXLEKTOR_BELOW_VERSION = '1.0.0'

@@ -336,9 +336,9 @@ test('an old voxlektor offers the pinned reinstall, or only shows the command', 
   spawns(on, spawned)
   on('ui.open', () => ({ value: { isPlaced: true } }))
   const pane = await openPane($)
-  const command = 'uv tool install --reinstall git+https://github.com/MlecznyU/voxlektor@v0.4.0'
+  const command = 'uv tool install --reinstall git+https://github.com/MlecznyU/voxlektor@v0.4.1'
 
-  expect(await pane.find({ text: /This voxlektor \(0\.1\.0\) lacks what dialogue-box needs \(version 0\.2\.0 or newer\); updating installs v0\.4\.0/ })).toBeDefined()
+  expect(await pane.find({ text: /This voxlektor \(0\.1\.0\) lacks what dialogue-box needs \(version 0\.2\.0 or newer\); updating installs v0\.4\.1/ })).toBeDefined()
   expect(await pane.find({ text: /too old/ })).toBeUndefined()
   expect(await pane.find({ text: `Command: ${command}` })).toBeDefined()
   await pane.press({ key: 'vox-show-command' })
@@ -365,12 +365,12 @@ test('a voxlektor newer than the range offers no reinstall, says dialogue-box ne
 test('an install past the pinned tag that lacks a feature is never offered a downgrade', async ($, on) => {
   const commands: string[][] = []
   const spawned: string[][] = []
-  voxHost(on, { ...VOX_CHECK, version: '0.4.1', features: ['owners', 'tags', 'watch'] }, commands)
+  voxHost(on, { ...VOX_CHECK, version: '0.4.2', features: ['owners', 'tags', 'watch'] }, commands)
   spawns(on, spawned)
   on('ui.open', () => ({ value: { isPlaced: true } }))
   const pane = await openPane($)
 
-  expect(await pane.find({ text: /This voxlektor \(0\.4\.1\) is newer than v0\.4\.0 but lacks what dialogue-box needs \(warm\)/ })).toBeDefined()
+  expect(await pane.find({ text: /This voxlektor \(0\.4\.2\) is newer than v0\.4\.1 but lacks what dialogue-box needs \(warm\)/ })).toBeDefined()
   expect(await pane.find({ text: /^Command:/ })).toBeUndefined()
   expect(await pane.find({ text: /Update voxlektor/ })).toBeUndefined()
   expect(await pane.find({ key: 'vox-check-again' })).toBeDefined()
