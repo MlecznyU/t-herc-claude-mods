@@ -73,17 +73,18 @@ test('an install at the pinned tag that lacks something is reinstalled; one past
 
   expect(at('0.3.0')).toMatchObject({ kind: 'needs-update', version: '0.3.0', missing: ['warm'] })
   expect(at('0.4.0')).toMatchObject({ kind: 'needs-update', version: '0.4.0', missing: ['warm'] })
-  expect(at('0.4.1')).toEqual({ kind: 'incomplete', version: '0.4.1', missing: ['warm'] })
+  expect(at('0.4.1')).toMatchObject({ kind: 'needs-update', version: '0.4.1', missing: ['warm'] })
+  expect(at('0.4.2')).toEqual({ kind: 'incomplete', version: '0.4.2', missing: ['warm'] })
   expect(at('0.9.5').kind).toBe('incomplete')
-  expect(setupState(input({ check: { ...CHECK, version: '0.4.1', model: null } }))).toEqual({
+  expect(setupState(input({ check: { ...CHECK, version: '0.4.2', model: null } }))).toEqual({
     kind: 'incomplete',
-    version: '0.4.1',
+    version: '0.4.2',
     missing: ['a model for its engine'],
   })
   // Nothing to run: a reinstall of the tag would be a downgrade, also when uv is missing.
-  expect(stepFor(at('0.4.1'))).toBeUndefined()
-  expect(commandFor(at('0.4.1'))).toBeUndefined()
-  expect(setupState(input({ found: { vxl: FOUND.vxl, uv: undefined }, check: { ...CHECK, version: '0.4.1', features: [] } })).kind).toBe('incomplete')
+  expect(stepFor(at('0.4.2'))).toBeUndefined()
+  expect(commandFor(at('0.4.2'))).toBeUndefined()
+  expect(setupState(input({ found: { vxl: FOUND.vxl, uv: undefined }, check: { ...CHECK, version: '0.4.2', features: [] } })).kind).toBe('incomplete')
 })
 
 test('a voxlektor below the compatible range asks for the pinned version', () => {
